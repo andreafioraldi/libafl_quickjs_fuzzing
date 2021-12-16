@@ -1,0 +1,34 @@
+[package]
+name = "libafl_quickjs"
+version = "0.6.1"
+authors = ["Andrea Fioraldi <andreafioraldi@gmail.com>", "Dominik Maier <domenukk@gmail.com>"]
+edition = "2018"
+
+[features]
+default = ["std"]
+std = []
+
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = 3
+debug = true
+
+[build-dependencies]
+cc = { version = "1.0", features = ["parallel"] }
+which = { version = "4.0.2" }
+num_cpus = "1.0"
+
+[dependencies]
+libafl = { git = "https://github.com/AFLplusplus/LibAFL.git", rev = "1f24ad0", features = ["default", "nautilus"] }
+libafl_targets = { git = "https://github.com/AFLplusplus/LibAFL.git", rev = "1f24ad0", features = ["sancov_pcguard_hitcounts", "libfuzzer"] }
+serde_json = "1.0.68"
+# TODO Include it only when building cc
+libafl_cc = { git = "https://github.com/AFLplusplus/LibAFL.git", rev = "1f24ad0" }
+clap = { version = "3.0.0-beta.2", features = ["yaml"] }
+postcard = { version = "0.7", features = ["alloc"] } # no_std compatible serde serialization fromat
+structopt = "0.3.25"
+
+[lib]
+name = "libafl_quickjs"
+crate-type = ["staticlib"]
