@@ -1,8 +1,8 @@
 [package]
 name = "libafl_quickjs"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Andrea Fioraldi <andreafioraldi@gmail.com>", "Dominik Maier <domenukk@gmail.com>"]
-edition = "2018"
+edition = "2021"
 
 [features]
 default = ["std"]
@@ -16,18 +16,17 @@ debug = true
 
 [build-dependencies]
 cc = { version = "1.0", features = ["parallel"] }
-which = { version = "4.0.2" }
+which = { version = "4.3" }
 num_cpus = "1.0"
 
 [dependencies]
-libafl = { git = "https://github.com/AFLplusplus/LibAFL.git", rev = "1f24ad0", features = ["default", "nautilus"] }
-libafl_targets = { git = "https://github.com/AFLplusplus/LibAFL.git", rev = "1f24ad0", features = ["sancov_pcguard_hitcounts", "libfuzzer"] }
-serde_json = "1.0.68"
+libafl = { git = "https://github.com/AFLplusplus/LibAFL.git", rev = "977415c", features = ["default", "nautilus"] }
+libafl_targets = { git = "https://github.com/AFLplusplus/LibAFL.git", rev = "977415c", features = ["sancov_pcguard_hitcounts", "libfuzzer"] }
+serde_json = "1.0"
 # TODO Include it only when building cc
-libafl_cc = { git = "https://github.com/AFLplusplus/LibAFL.git", rev = "1f24ad0" }
-clap = { version = "3.0.0-beta.2", features = ["yaml"] }
-postcard = { version = "0.7", features = ["alloc"] } # no_std compatible serde serialization fromat
-structopt = "0.3.25"
+libafl_cc = { git = "https://github.com/AFLplusplus/LibAFL.git", rev = "977415c" }
+clap = { version = "4.0", features = ["derive"] }
+postcard = { version = "1.0", features = ["alloc"] } # no_std compatible serde serialization format
 
 [lib]
 name = "libafl_quickjs"

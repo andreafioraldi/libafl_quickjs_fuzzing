@@ -1,8 +1,8 @@
 //! A libfuzzer-like fuzzer with llmp-multithreading support and restarts
 //! The example harness is built for libpng.
-//! In this example, you will see the use of the `launcher` feature.
-//! The `launcher` will spawn new processes for each cpu core.
+//! This will fuzz javascript.
 
+use clap::Parser;
 use core::time::Duration;
 use std::{
     env, fs,
@@ -10,25 +10,21 @@ use std::{
     net::SocketAddr,
     path::PathBuf,
 };
-use structopt::StructOpt;
 
 use libafl::{
     bolts::{
+        core_affinity::Cores,
         current_nanos,
         launcher::Launcher,
-        os::Cores,
         rands::StdRand,
         shmem::{ShMemProvider, StdShMemProvider},
         tuples::tuple_list,
     },
-    corpus::{
-        CachedOnDiskCorpus, Corpus, IndexesLenTimeMinimizerCorpusScheduler, OnDiskCorpus,
-        QueueCorpusScheduler,
-    },
+    corpus::{CachedOnDiskCorpus, Corpus, OnDiskCorpus},
     events::EventConfig,
     executors::{inprocess::InProcessExecutor, ExitKind, TimeoutExecutor},
     feedback_or, feedback_or_fast,
-    feedbacks::{CrashFeedback, MapFeedbackState, MaxMapFeedback, TimeFeedback, TimeoutFeedback},
+    feedbacks::{CrashFeedback, MaxMapFeedback, TimeFeedback, TimeoutFeedback},
     fuzzer::{Fuzzer, StdFuzzer},
     generators::{Generator, NautilusContext, NautilusGenerator},
     inputs::{
@@ -37,6 +33,7 @@ use libafl::{
     monitors::MultiMonitor,
     mutators::{encoded_mutations::encoded_mutations, StdScheduledMutator},
     observers::{HitcountsMapObserver, StdMapObserver, TimeObserver},
+    schedulers::{IndexesLenTimeMinimizerScheduler, QueueScheduler},
     stages::mutational::StdMutationalStage,
     state::{HasCorpus, StdState},
     Error, Evaluator,
@@ -49,63 +46,55 @@ fn timeout_from_millis_str(time: &str) -> Result<Duration, Error> {
     Ok(Duration::from_millis(time.parse()?))
 }
 
-#[derive(Debug, StructOpt)]
-#[structopt(
+#[derive(Debug, Parser)]
+#[command(
     name = "libafl_quickjs",
     about = "Fuzz quickjs with libafl",
     author = "Andrea Fioraldi <andreafioraldi@gmail.com>"
 )]
 struct Opt {
-    #[structopt(
+    #[arg(
         short,
         long,
-        parse(try_from_str = Cores::from_cmdline),
+        value_parser = Cores::from_cmdline,
         help = "Spawn a client in each of the provided cores. Broker runs in the 0th core. 'all' to select all available cores. 'none' to run a client without binding to any core. eg: '1,2-4,6' selects the cores 1,2,3,4,6.",
         name = "CORES"
     )]
     cores: Cores,
 
-    #[structopt(
-        short = "p",
+    #[arg(
+        short = 'p',
         long,
         help = "Choose the broker TCP port, default is 1337",
         name = "PORT"
     )]
     broker_port: u16,
 
-    #[structopt(
-        parse(try_from_str),
-        short = "a",
-        long,
-        help = "Specify a remote broker",
-        name = "REMOTE"
-    )]
+    #[arg(short = 'a', long, help = "Specify a remote broker", name = "REMOTE")]
     remote_broker_addr: Option<SocketAddr>,
 
-    #[structopt(
+    #[arg(
         short,
         long,
-        parse(try_from_str),
         help = "Set the output directory, default is ./out",
         name = "OUTPUT",
         default_value = "./out"
     )]
     output: PathBuf,
 
-    #[structopt(
+    #[arg(
         short,
         long,
-        parse(try_from_str),
         help = "Convert a stored testcase to JavaScript text",
         name = "REPRO"
     )]
     repro: Option<PathBuf>,
 
-    #[structopt(
-        parse(try_from_str = timeout_from_millis_str),
+    #[arg(
+        value_parser = timeout_from_millis_str,
         short,
         long,
-        help = "Set the exeucution timeout in milliseconds, default is 1000",
+        help = "Set the execution timeout in milliseconds, default is 1000",
         name = "TIMEOUT",
         default_value = "1000"
     )]
@@ -117,11 +106,12 @@ const CORPUS_CACHE: usize = 4096;
 
 /// The main fn, `no_mangle` as it is a C symbol
 #[no_mangle]
+#[allow(clippy::too_many_lines)]
 pub fn libafl_main() {
     // Registry the metadata types used in this fuzzer
     // Needed only on no_std
     //RegistryBuilder::register::<Tokens>();
-    let opt = Opt::from_args();
+    let opt = Opt::parse();
 
     let mut initial_dir = opt.output.clone();
     initial_dir.push("initial");
@@ -135,20 +125,22 @@ pub fn libafl_main() {
     if let Some(repro) = opt.repro {
         for i in 0..NUM_GENERATED {
             let mut file =
-                fs::File::open(&initial_dir.join(format!("id_{}", i))).expect("no file found");
+                fs::File::open(initial_dir.join(format!("id_{i}"))).expect("no file found");
             let mut buffer = vec![];
             file.read_to_end(&mut buffer).expect("buffer overflow");
 
-            let _ = encoder_decoder
-                .encode(&buffer, &mut tokenizer)
-                .expect("encoding failed");
+            std::mem::drop(
+                encoder_decoder
+                    .encode(&buffer, &mut tokenizer)
+                    .expect("encoding failed"),
+            );
         }
 
         let input = EncodedInput::from_file(repro).unwrap();
 
         let args: Vec<String> = env::args().collect();
         if libfuzzer_initialize(&args) == -1 {
-            println!("Warning: LLVMFuzzerInitialize failed with -1")
+            println!("Warning: LLVMFuzzerInitialize failed with -1");
         }
 
         let mut bytes = vec![];
@@ -168,7 +160,7 @@ pub fn libafl_main() {
         let nautilus = generator.generate(&mut ()).unwrap();
         nautilus.unparse(&context, &mut bytes);
 
-        let mut file = fs::File::create(&initial_dir.join(format!("id_{}", i))).unwrap();
+        let mut file = fs::File::create(initial_dir.join(format!("id_{i}"))).unwrap();
         file.write_all(&bytes).unwrap();
 
         let input = encoder_decoder
@@ -184,9 +176,9 @@ pub fn libafl_main() {
 
     let shmem_provider = StdShMemProvider::new().expect("Failed to init shared memory");
 
-    let stats = MultiMonitor::new(|s| println!("{}", s));
+    let stats = MultiMonitor::new(|s| println!("{s}"));
 
-    let mut run_client = |state: Option<StdState<_, _, _, _, _>>, mut restarting_mgr, _core_id| {
+    let mut run_client = |state: Option<StdState<_, _, _, _>>, mut restarting_mgr, _core_id| {
         let mut objective_dir = opt.output.clone();
         objective_dir.push("crashes");
         let mut corpus_dir = opt.output.clone();
@@ -199,20 +191,17 @@ pub fn libafl_main() {
         // Create an observation channel to keep track of the execution time
         let time_observer = TimeObserver::new("time");
 
-        // The state of the edges feedback.
-        let feedback_state = MapFeedbackState::with_observer(&edges_observer);
-
         // Feedback to rate the interestingness of an input
         // This one is composed by two Feedbacks in OR
-        let feedback = feedback_or!(
+        let mut feedback = feedback_or!(
             // New maximization map feedback linked to the edges observer and the feedback state
-            MaxMapFeedback::new_tracking(&feedback_state, &edges_observer, true, false),
+            MaxMapFeedback::new_tracking(&edges_observer, true, false),
             // Time feedback, this one does not need a feedback state
             TimeFeedback::new_with_observer(&time_observer)
         );
 
         // A feedback to choose if an input is a solution or not
-        let objective = feedback_or_fast!(CrashFeedback::new(), TimeoutFeedback::new());
+        let mut objective = feedback_or_fast!(CrashFeedback::new(), TimeoutFeedback::new());
 
         // If not restarting, create a State from scratch
         let mut state = state.unwrap_or_else(|| {
@@ -224,14 +213,14 @@ pub fn libafl_main() {
                 // Corpus in which we store solutions (crashes in this example),
                 // on disk so the user can get them after stopping the fuzzer
                 OnDiskCorpus::new(objective_dir).unwrap(),
-                // States of the feedbacks.
-                // They are the data related to the feedbacks that you want to persist in the State.
-                tuple_list!(feedback_state),
+                &mut feedback,
+                &mut objective,
             )
+            .unwrap()
         });
 
         // A minimization+queue policy to get testcasess from the corpus
-        let scheduler = IndexesLenTimeMinimizerCorpusScheduler::new(QueueCorpusScheduler::new());
+        let scheduler = IndexesLenTimeMinimizerScheduler::new(QueueScheduler::new());
 
         // A fuzzer with feedbacks and a corpus scheduler
         let mut fuzzer = StdFuzzer::new(scheduler, feedback, objective);
@@ -267,7 +256,7 @@ pub fn libafl_main() {
         // Call LLVMFUzzerInitialize() if present.
         let args: Vec<String> = env::args().collect();
         if libfuzzer_initialize(&args) == -1 {
-            println!("Warning: LLVMFuzzerInitialize failed with -1")
+            println!("Warning: LLVMFuzzerInitialize failed with -1");
         }
 
         // In case the corpus is empty (on first run), reset
@@ -285,7 +274,7 @@ pub fn libafl_main() {
         }
 
         // Setup a basic mutator with a mutational stage
-        let mutator = StdScheduledMutator::with_max_iterations(encoded_mutations(), 2);
+        let mutator = StdScheduledMutator::with_max_stack_pow(encoded_mutations(), 2);
         let mut stages = tuple_list!(StdMutationalStage::new(mutator));
 
         fuzzer.fuzz_loop(&mut stages, &mut executor, &mut state, &mut restarting_mgr)?;
@@ -306,6 +295,6 @@ pub fn libafl_main() {
     {
         Ok(()) => (),
         Err(Error::ShuttingDown) => println!("Fuzzing stopped by user. Good bye."),
-        Err(err) => panic!("Failed to run launcher: {:?}", err),
+        Err(err) => panic!("Failed to run launcher: {err:?}"),
     }
 }
