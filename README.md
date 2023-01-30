@@ -1,6 +1,6 @@
 # LibAFL QuickJS Fuzzing Example
 
-An example fuzzer about how to fuzz a JS engine combinign Nautilus with Token-level fuzzing.
+An example fuzzer about how to fuzz a JS engine combining Nautilus with Token-level fuzzing.
 
 ## Prepare
 
