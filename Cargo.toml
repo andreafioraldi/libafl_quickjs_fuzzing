@@ -20,12 +20,13 @@ which = { version = "4.3" }
 num_cpus = "1.0"
 
 [dependencies]
-libafl = { git = "https://github.com/AFLplusplus/LibAFL.git", rev = "977415c", features = ["default", "nautilus"] }
-libafl_targets = { git = "https://github.com/AFLplusplus/LibAFL.git", rev = "977415c", features = ["sancov_pcguard_hitcounts", "libfuzzer"] }
+libafl = { git = "https://github.com/AFLplusplus/LibAFL.git", rev = "55a300d", features = ["default", "nautilus"] }
+libafl_bolts = { git = "https://github.com/AFLplusplus/LibAFL.git", rev = "55a300d" }
+libafl_targets = { git = "https://github.com/AFLplusplus/LibAFL.git", rev = "55a300d", features = ["sancov_pcguard_hitcounts", "libfuzzer"] }
 serde_json = "1.0"
 # TODO Include it only when building cc
-libafl_cc = { git = "https://github.com/AFLplusplus/LibAFL.git", rev = "977415c" }
-clap = { version = "4.0", features = ["derive"] }
+libafl_cc = { git = "https://github.com/AFLplusplus/LibAFL.git", rev = "55a300d" }
+clap = { version = "4.5", features = ["derive"] }
 postcard = { version = "1.0", features = ["alloc"] } # no_std compatible serde serialization format
 
 [lib]
