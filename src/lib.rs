@@ -4,25 +4,10 @@
 
 use clap::Parser;
 use core::time::Duration;
-use std::{
-    env, fs,
-    io::{Read, Write},
-    net::SocketAddr,
-    path::PathBuf,
-};
-
 use libafl::{
-    bolts::{
-        core_affinity::Cores,
-        current_nanos,
-        launcher::Launcher,
-        rands::StdRand,
-        shmem::{ShMemProvider, StdShMemProvider},
-        tuples::tuple_list,
-    },
     corpus::{CachedOnDiskCorpus, Corpus, OnDiskCorpus},
-    events::EventConfig,
-    executors::{inprocess::InProcessExecutor, ExitKind, TimeoutExecutor},
+    events::{EventConfig, Launcher},
+    executors::{inprocess::InProcessExecutor, ExitKind},
     feedback_or, feedback_or_fast,
     feedbacks::{CrashFeedback, MaxMapFeedback, TimeFeedback, TimeoutFeedback},
     fuzzer::{Fuzzer, StdFuzzer},
@@ -37,6 +22,19 @@ use libafl::{
     stages::mutational::StdMutationalStage,
     state::{HasCorpus, StdState},
     Error, Evaluator,
+};
+use libafl_bolts::{
+    core_affinity::Cores,
+    current_nanos,
+    rands::StdRand,
+    shmem::{ShMemProvider, StdShMemProvider},
+    tuples::tuple_list,
+};
+use std::{
+    env, fs,
+    io::{Read, Write},
+    net::SocketAddr,
+    path::PathBuf,
 };
 
 use libafl_targets::{libfuzzer_initialize, libfuzzer_test_one_input, EDGES_MAP, MAX_EDGES_NUM};
@@ -185,8 +183,13 @@ pub fn libafl_main() {
         corpus_dir.push("corpus");
 
         // Create an observation channel using the coverage map
-        let edges = unsafe { &mut EDGES_MAP[0..MAX_EDGES_NUM] };
-        let edges_observer = HitcountsMapObserver::new(StdMapObserver::new("edges", edges));
+        let edges_observer = unsafe {
+            HitcountsMapObserver::new(StdMapObserver::from_mut_ptr(
+                "edges",
+                EDGES_MAP.as_mut_ptr(),
+                MAX_EDGES_NUM,
+            ))
+        };
 
         // Create an observation channel to keep track of the execution time
         let time_observer = TimeObserver::new("time");
@@ -195,9 +198,9 @@ pub fn libafl_main() {
         // This one is composed by two Feedbacks in OR
         let mut feedback = feedback_or!(
             // New maximization map feedback linked to the edges observer and the feedback state
-            MaxMapFeedback::new_tracking(&edges_observer, true, false),
+            MaxMapFeedback::tracking(&edges_observer, true, false),
             // Time feedback, this one does not need a feedback state
-            TimeFeedback::new_with_observer(&time_observer)
+            TimeFeedback::with_observer(&time_observer)
         );
 
         // A feedback to choose if an input is a solution or not
@@ -241,16 +244,14 @@ pub fn libafl_main() {
         };
 
         // Create the executor for an in-process function with one observer for edge coverage and one for the execution time
-        let mut executor = TimeoutExecutor::new(
-            InProcessExecutor::new(
-                &mut harness,
-                tuple_list!(edges_observer, time_observer),
-                &mut fuzzer,
-                &mut state,
-                &mut restarting_mgr,
-            )?,
+        let mut executor = InProcessExecutor::with_timeout(
+            &mut harness,
+            tuple_list!(edges_observer, time_observer),
+            &mut fuzzer,
+            &mut state,
+            &mut restarting_mgr,
             opt.timeout,
-        );
+        )?;
 
         // The actual target run starts here.
         // Call LLVMFUzzerInitialize() if present.
